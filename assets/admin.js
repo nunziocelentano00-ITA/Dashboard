@@ -34,6 +34,7 @@
   /* ---------- stato ---------- */
   const S = {
     key: null, salt: null, iter: RS.crypto.KDF_ITER,
+    loadedSalt: null, // salt del db online aperto all'accesso (null = area creata ora su questo dispositivo)
     db: null, base: null, dirty: false,
     pending: new Map(), // mediaId -> { clientId, enc } (immagini nuove, già cifrate con la chiave cliente)
     deleted: new Set(), // percorsi da eliminare al prossimo "Pubblica"
@@ -220,6 +221,16 @@
     try {
       remote = await RS.fetchSite('../data/db.enc', false, true);
     } catch (e) {}
+    // Subito dopo un "Pubblica" GitHub Pages può impiegare 1–2 minuti a servire i file nuovi:
+    // in quel caso li leggiamo direttamente dal repo (pubblico), così non si riparte mai dalla configurazione.
+    if (!remote) {
+      const g = RS.gh.guess();
+      if (g.owner && g.repo) {
+        try {
+          remote = await RS.gh.raw(g, 'data/db.enc');
+        } catch (e) {}
+      }
+    }
     const draft = lsGet(LS_DRAFT);
     if (!remote && !draft) return renderSetup();
     renderLogin(remote, draft);
@@ -344,6 +355,7 @@
         idbClear();
       }
     }
+    S.loadedSalt = env ? env.salt : null;
     S.key = use.key;
     S.salt = use.salt;
     S.iter = use.iter;
@@ -1102,11 +1114,22 @@
       const cur = await RS.gh.raw(S.gh, 'data/db.enc');
       if (cur) {
         const o = JSON.parse(cur);
-        if (o.kdf && o.kdf.salt === S.salt) {
+        const salt = o.kdf && o.kdf.salt;
+        if (salt === S.salt) {
           const remote = await RS.crypto.decJSON(S.key, o);
           if ((remote.updatedAt || null) !== S.base && !confirm('I dati online sono stati modificati da un altro dispositivo dopo che li hai aperti. Pubblicando li sovrascrivi. Continuare?')) {
             throw new Error('Pubblicazione annullata.');
           }
+        } else if (salt !== S.loadedSalt) {
+          // Online c'è un'area admin diversa da quella aperta qui (non è un semplice cambio password):
+          // non sovrascriverla senza una conferma esplicita.
+          const ok = prompt(
+            'ATTENZIONE: online esiste già un’area admin con altri dati e un’altra password.\n' +
+              'Pubblicando la cancelli definitivamente.\n\n' +
+              'Se è tua, annulla e accedi con quella password (ricarica la pagina).\n' +
+              'Per sovrascriverla comunque scrivi SOVRASCRIVI:'
+          );
+          if (ok !== 'SOVRASCRIVI') throw new Error('Pubblicazione annullata.');
         }
       }
       const files = [];
@@ -1137,6 +1160,7 @@
       await RS.gh.commit(S.gh, final, `Rendiconti: aggiornamento ${now.slice(0, 16).replace('T', ' ')}`);
 
       S.base = now;
+      S.loadedSalt = S.salt;
       S.dirty = false;
       S.pending.clear();
       S.deleted.clear();

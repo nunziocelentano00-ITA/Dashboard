@@ -230,7 +230,8 @@
   RS.LOCAL = LOCAL;
   const API = LOCAL ? location.origin + '/__gh' : 'https://api.github.com';
   function ghHeaders(cfg, accept, json) {
-    const h = { Authorization: 'Bearer ' + cfg.token, Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    const h = { Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    if (cfg.token) h.Authorization = 'Bearer ' + cfg.token; // senza token: lettura pubblica (repo pubblico)
     if (json) h['Content-Type'] = 'application/json';
     return h;
   }
