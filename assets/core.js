@@ -156,11 +156,28 @@
     return p ? `https://www.instagram.com/${p.kind}/${p.code}/` : url;
   };
 
+  /* Link per pagare (es. revolut.me/nome): solo https, altrimenti ''. */
+  RS.payLink = (s) => {
+    s = (s || '').trim();
+    if (!s) return '';
+    s = s.replace(/^http:\/\//i, 'https://');
+    if (!/^[a-z]+:\/\//i.test(s)) s = 'https://' + s;
+    try {
+      const u = new URL(s);
+      return u.protocol === 'https:' && u.hostname.includes('.') ? u.href : '';
+    } catch (e) {
+      return '';
+    }
+  };
+  RS.payLabel = (url) => (/(^|\.)revolut\.(me|com)$/i.test(new URL(url).hostname) ? 'Paga con Revolut' : 'Paga online');
+
   /* ---------- contabilità ----------
-     I pagamenti coprono i lavori in ordine cronologico (dal più vecchio):
-     così ogni lavoro risulta Saldato, Parziale o Da saldare. */
+     Un pagamento può indicare quali lavori salda (p.works): copre prima quelli.
+     Il resto, e i pagamenti senza indicazione, coprono gli altri lavori in ordine
+     cronologico (dal più vecchio): così ogni lavoro risulta Saldato, Parziale o Da saldare. */
   RS.STATE_LABEL = { saldato: 'Saldato', parziale: 'Parziale', da_saldare: 'Da saldare' };
   RS.TYPE_LABEL = { published: 'Pubblicato', draft: 'Bozza' };
+  RS.workName = (w) => w.title || `${RS.TYPE_LABEL[w.type] || 'Contenuto'} del ${RS.fmtDate(w.date)}`;
   RS.ledger = (client) => {
     const works = (client.works || [])
       .slice()
@@ -168,13 +185,29 @@
     const payments = (client.payments || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const total = works.reduce((s, w) => s + (w.price || 0), 0);
     const paid = payments.reduce((s, p) => s + (p.amount || 0), 0);
-    let pool = paid;
+    const covered = {};
+    works.forEach((w) => (covered[w.id] = 0));
+    let pool = 0;
+    for (const p of payments) {
+      let left = p.amount || 0;
+      const target = new Set(p.works || []);
+      for (const w of works) {
+        if (!left) break;
+        if (!target.has(w.id)) continue;
+        const add = Math.max(0, Math.min(left, (w.price || 0) - covered[w.id]));
+        covered[w.id] += add;
+        left -= add;
+      }
+      pool += left;
+    }
     const status = {};
     for (const w of works) {
       const price = w.price || 0;
-      const covered = Math.max(0, Math.min(price, pool));
-      pool -= covered;
-      status[w.id] = { covered, state: covered >= price ? 'saldato' : covered > 0 ? 'parziale' : 'da_saldare' };
+      const pinned = covered[w.id];
+      const add = Math.max(0, Math.min(price - pinned, pool));
+      pool -= add;
+      const cov = pinned + add;
+      status[w.id] = { covered: cov, pinned, state: cov >= price ? 'saldato' : cov > 0 ? 'parziale' : 'da_saldare' };
     }
     return {
       works,
@@ -201,7 +234,7 @@
   /* Dati che il cliente può vedere: niente note interne. */
   RS.clientView = (db, c) => ({
     v: 1,
-    owner: { name: (db.owner && db.owner.name) || '' },
+    owner: { name: (db.owner && db.owner.name) || '', payLink: (db.owner && db.owner.payLink) || '' },
     client: { name: c.name, handle: c.handle || '', theme: c.theme || RS.DEFAULT_THEME },
     works: (c.works || []).map((w) => ({
       id: w.id,
@@ -219,7 +252,8 @@
       date: p.date,
       amount: p.amount,
       method: p.method || '',
-      note: p.note || ''
+      note: p.note || '',
+      works: p.works || []
     })),
     updatedAt: new Date().toISOString()
   });

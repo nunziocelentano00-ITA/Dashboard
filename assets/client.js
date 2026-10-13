@@ -13,7 +13,8 @@
     right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
     draft: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
-    ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
+    ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
+    euro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 6.5A7 7 0 1 0 17.5 17.5"/><path d="M4 10h9M4 14h9"/></svg>'
   };
 
   function fail(title, msg) {
@@ -86,6 +87,11 @@
       }
     }
     askPin(slug, k, file);
+  }
+
+  function paidFor(p) {
+    const names = (p.works || []).map((id) => L.works.find((w) => w.id === id)).filter(Boolean).map(RS.workName);
+    return names.length ? `<small>Salda: ${esc(names.join(', '))}</small>` : '';
   }
 
   function show() {
@@ -191,6 +197,7 @@
     const pct = L.total ? Math.min(100, Math.round((L.paid / L.total) * 100)) : 0;
     const settled = L.total > 0 && L.due === 0;
     const handle = (c.handle || '').replace(/^@/, '');
+    const pay = L.due > 0 ? RS.payLink(data.owner && data.owner.payLink) : '';
 
     app.innerHTML = `
       <header class="hero">
@@ -223,7 +230,7 @@
           <div class="kpi"><div class="lbl">Pagato</div><div class="val" data-count="${L.paid}">${RS.money(0)}</div><div class="hint">${L.payments.length} ${L.payments.length === 1 ? 'pagamento' : 'pagamenti'}</div></div>
           <div class="kpi ${settled ? 'done' : 'due'}"><div class="lbl">${settled ? 'Tutto saldato' : 'Da saldare'}</div><div class="val" data-count="${L.due}">${RS.money(0)}</div><div class="hint">${
             L.credit ? 'Credito a tuo favore: ' + RS.money(L.credit) : settled ? 'Grazie!' : 'Residuo aggiornato al ' + RS.fmtDate(data.updatedAt.slice(0, 10))
-          }</div></div>
+          }</div>${pay ? `<a class="pay-btn" href="${esc(pay)}" target="_blank" rel="noopener">${I.euro} ${RS.payLabel(pay)}</a>` : ''}</div>
           <div class="progress">
             <div class="progress-row"><span>Avanzamento pagamenti</span><span>${pct}%</span></div>
             <div class="bar"><i data-pct="${pct}"></i></div>
@@ -256,7 +263,7 @@
                 L.payments.length
                   ? L.payments
                       .map(
-                        (p) => `<div class="r-line"><div>${RS.fmtDate(p.date)}${p.method ? ' · ' + esc(p.method) : ''}${p.note ? `<small>${esc(p.note)}</small>` : ''}</div><div class="neg">− ${RS.money(p.amount)}</div></div>`
+                        (p) => `<div class="r-line"><div>${RS.fmtDate(p.date)}${p.method ? ' · ' + esc(p.method) : ''}${p.note ? `<small>${esc(p.note)}</small>` : ''}${paidFor(p)}</div><div class="neg">− ${RS.money(p.amount)}</div></div>`
                       )
                       .join('')
                   : '<div class="r-line"><div style="color:var(--muted)">Nessun pagamento registrato</div></div>'
@@ -268,6 +275,7 @@
               ${L.credit ? `<div class="r-line"><div>Credito a tuo favore</div><div><b>${RS.money(L.credit)}</b></div></div>` : ''}
             </div>
             <div class="r-total"><span>Residuo da saldare</span><strong>${RS.money(L.due)}</strong></div>
+            ${pay ? `<p class="pay-print">Puoi pagare su: ${esc(pay.replace(/^https:\/\//, '').replace(/\/$/, ''))}</p>` : ''}
             ${settled ? '<div class="stamp">SALDATO</div>' : ''}
             <p class="r-foot">Documento di rendicontazione dei servizi social. Non costituisce documento fiscale.</p>
           </article>

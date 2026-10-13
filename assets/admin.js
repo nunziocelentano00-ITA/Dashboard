@@ -29,7 +29,7 @@
     menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>'
   };
-  const METHODS = ['Bonifico', 'Contanti', 'PayPal', 'Carta', 'Satispay', 'Altro'];
+  const METHODS = ['Bonifico', 'Revolut', 'Contanti', 'PayPal', 'Carta', 'Satispay', 'Altro'];
 
   /* ---------- stato ---------- */
   const S = {
@@ -607,7 +607,7 @@
             .slice()
             .reverse()
             .map(
-              (p) => `<tr class="click" data-act="edit-payment" data-id="${p.id}"><td>${RS.fmtDate(p.date)}</td><td>${esc(p.method || '—')}</td><td style="color:var(--muted)">${esc(p.note || '')}</td><td class="num strong" style="color:var(--ok)">+ ${RS.money(p.amount)}</td>
+              (p) => `<tr class="click" data-act="edit-payment" data-id="${p.id}"><td>${RS.fmtDate(p.date)}</td><td>${esc(p.method || '—')}</td><td style="color:var(--muted)">${esc(p.note || '')}${paidFor(c, p)}</td><td class="num strong" style="color:var(--ok)">+ ${RS.money(p.amount)}</td>
               <td class="acts"><button class="btn ghost icon danger" data-act="del-payment" data-id="${p.id}" title="Elimina">${I.trash}</button></td></tr>`
             )
             .join('')}
@@ -615,7 +615,11 @@
           : `<div class="empty"><b>Nessun pagamento</b>Quando il cliente paga, registralo qui: il residuo si aggiorna da solo, anche per gli acconti.</div>`
       }
     </div>
-    <p style="color:var(--faint);font-size:12.5px;margin:12px 4px">I pagamenti coprono i contenuti in ordine cronologico, dal più vecchio: così ogni contenuto risulta Saldato, Parziale o Da saldare.</p>`;
+    <p style="color:var(--faint);font-size:12.5px;margin:12px 4px">Se un pagamento indica cosa salda, copre prima quei contenuti. Il resto copre gli altri in ordine cronologico, dal più vecchio: così ogni contenuto risulta Saldato, Parziale o Da saldare.</p>`;
+  }
+  function paidFor(c, p) {
+    const names = (p.works || []).map((id) => c.works.find((w) => w.id === id)).filter(Boolean).map(RS.workName);
+    return names.length ? `<div class="paid-for">Salda: ${esc(names.join(', '))}</div>` : '';
   }
 
   function settingsTab(c) {
@@ -856,6 +860,11 @@
     if (!confirm(`Eliminare “${w.title || RS.TYPE_LABEL[w.type]}” (${RS.money(w.price)})?`)) return false;
     (w.media || []).forEach(dropMedia);
     c.works = c.works.filter((x) => x.id !== w.id);
+    for (const p of c.payments) {
+      if (!p.works) continue;
+      p.works = p.works.filter((id) => id !== w.id);
+      if (!p.works.length) delete p.works;
+    }
     markDirty();
     render();
     toast('Contenuto eliminato.');
@@ -866,10 +875,29 @@
   function openPayment(c, p) {
     const isNew = !p;
     const L = RS.ledger(c);
+    // Contenuti che questo pagamento può saldare: quelli non già saldati da altri pagamenti indicati.
+    const others = RS.ledger({ works: c.works, payments: c.payments.filter((x) => x !== p) });
+    const sel = new Set((p && p.works) || []);
+    const open = (w) => (w.price || 0) - others.status[w.id].pinned;
+    const choices = others.works.filter((w) => sel.has(w.id) || open(w) > 0);
     const M = modal(
       `${dlgHead(isNew ? 'Registra pagamento' : 'Modifica pagamento')}
       <form id="pf"><div class="dlg-b">
         ${isNew && L.due ? `<div class="note">Residuo attuale: <b>${RS.money(L.due)}</b> · <a href="#" data-fill>usa l’importo intero</a></div>` : ''}
+        ${
+          choices.length
+            ? `<div class="f"><span>Cosa salda <span class="help">(facoltativo: se non scegli nulla copre i contenuti dal più vecchio)</span></span>
+              <div class="pick">${choices
+                .map(
+                  (w) => `<label class="pick-row"><input type="checkbox" value="${w.id}" ${sel.has(w.id) ? 'checked' : ''}>
+                    <span class="pick-t"><b>${esc(RS.workName(w))}</b><small>${RS.fmtDate(w.date)} · ${RS.TYPE_LABEL[w.type]}${others.status[w.id].pinned ? ` · già pagati ${RS.money(others.status[w.id].pinned)}` : ''}</small></span>
+                    <span class="pill ${others.status[w.id].state}">${RS.STATE_LABEL[others.status[w.id].state]}</span>
+                    <span class="pick-p">${RS.money(open(w))}</span></label>`
+                )
+                .join('')}</div>
+              <div class="pick-sum" data-sum></div></div>`
+            : ''
+        }
         <div class="grid2">
           <label class="f">Importo ricevuto<input name="amount" inputmode="decimal" value="${p ? esc(RS.centsToInput(p.amount)) : ''}" placeholder="0,00" required></label>
           <label class="f">Data<input name="date" type="date" value="${esc(p ? p.date : RS.today())}" required></label>
@@ -881,18 +909,59 @@
     );
     const form = $('#pf', M.el);
     const fill = $('[data-fill]', M.el);
+    const boxes = [...M.el.querySelectorAll('.pick input')];
+    const sumEl = $('[data-sum]', M.el);
+    const picked = () => boxes.filter((b) => b.checked).map((b) => b.value);
+    const pickedSum = () => picked().reduce((s, id) => s + open(choices.find((w) => w.id === id)), 0);
+    // L'importo segue i contenuti scelti finché non lo scrivi a mano.
+    let manual = !isNew;
+    const showSum = () => {
+      if (!sumEl) return;
+      const n = picked().length;
+      const sum = pickedSum();
+      const amount = RS.parseMoney(form.amount.value);
+      let msg = '';
+      if (n) {
+        msg = `${n} ${n === 1 ? 'contenuto scelto' : 'contenuti scelti'} · ${RS.money(sum)}`;
+        if (!isNaN(amount) && amount < sum) msg += ` — l’importo non basta: l’ultimo risulterà Parziale`;
+        else if (!isNaN(amount) && amount > sum) msg += ` — il resto (${RS.money(amount - sum)}) copre gli altri dal più vecchio`;
+      }
+      sumEl.textContent = msg;
+      sumEl.hidden = !msg;
+    };
+    boxes.forEach((b) =>
+      b.addEventListener('change', () => {
+        if (!manual || !form.amount.value.trim()) {
+          manual = false;
+          form.amount.value = RS.centsToInput(pickedSum());
+        }
+        showSum();
+      })
+    );
+    form.amount.addEventListener('input', () => {
+      manual = !!form.amount.value.trim();
+      showSum();
+    });
+    showSum();
     if (fill)
       fill.addEventListener('click', (e) => {
         e.preventDefault();
         form.amount.value = RS.centsToInput(L.due);
+        manual = true;
+        showSum();
       });
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const amount = RS.parseMoney(form.amount.value);
       if (isNaN(amount) || amount <= 0) return toast('Inserisci un importo valido.', 'err');
       const data = { amount, date: form.date.value || RS.today(), method: form.method.value, note: form.note.value.trim() };
+      const works = picked();
+      if (works.length) data.works = works;
       if (isNew) c.payments.push(Object.assign({ id: RS.uid() }, data));
-      else Object.assign(p, data);
+      else {
+        Object.assign(p, data);
+        if (!works.length) delete p.works;
+      }
       M.close();
       markDirty();
       render();
@@ -929,6 +998,7 @@
       `${dlgHead('Impostazioni')}
       <div class="dlg-b">
         <label class="f">Il tuo nome (compare nelle pagine cliente e nel PDF)<input id="own" value="${esc(S.db.owner.name || '')}"></label>
+        <label class="f"><span>Link per i pagamenti <span class="help">(es. revolut.me/tuonome: nelle pagine cliente compare il pulsante “Paga”)</span></span><input id="paylink" inputmode="url" value="${esc(S.db.owner.payLink || '')}" placeholder="https://revolut.me/…"></label>
         <div class="grid2">
           <button class="btn" data-act="gh">${I.gear} Collegamento GitHub</button>
           <button class="btn" data-act="pw">${I.lock} Cambia password</button>
@@ -941,6 +1011,18 @@
       S.db.owner.name = e.target.value.trim();
       markDirty();
       render();
+    });
+    $('#paylink', M.el).addEventListener('change', (e) => {
+      const v = e.target.value.trim();
+      const link = RS.payLink(v);
+      if (v && !link) return toast('Link non valido: incolla un indirizzo come https://revolut.me/tuonome', 'err');
+      e.target.value = link;
+      if (link === (S.db.owner.payLink || '')) return;
+      if (link) S.db.owner.payLink = link;
+      else delete S.db.owner.payLink;
+      markDirty();
+      render();
+      toast(link ? 'Link salvato. Premi “Pubblica” per mostrarlo ai clienti.' : 'Link rimosso.');
     });
     M.el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
