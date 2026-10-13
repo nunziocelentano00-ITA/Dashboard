@@ -20,12 +20,15 @@ Sito statico pensato per **GitHub Pages**: niente server e niente build. I dati 
 - Il PIN protegge da chi riceve il link per sbaglio (inoltri, screenshot).
   Chi ha il link e un computer molto potente potrebbe però provare tutti i PIN di 6 cifre.
   Per questo è meglio mandare link e PIN su canali diversi.
+- In *Impostazioni* puoi inserire un link per i pagamenti (es. `revolut.me/tuonome`).
+  Finché c'è un residuo, nelle pagine cliente compare il pulsante **Paga con Revolut**.
 - Nell'admin le modifiche si salvano subito sul dispositivo. Il tasto **Pubblica** fa un unico commit sul repo tramite l'API di GitHub, e GitHub Pages aggiorna il sito in 1–2 minuti.
 - **Contabilità.**
   - Ogni contenuto ha un prezzo, IVA inclusa.
   - I pagamenti si registrano nel registro.
   - Residuo = totale − pagato.
-  - I pagamenti coprono i contenuti dal più vecchio al più recente, così ogni contenuto risulta *Saldato*, *Parziale* o *Da saldare*.
+  - Registrando un pagamento puoi spuntare quali contenuti salda: copre prima quelli.
+  - Il resto, e i pagamenti senza contenuti indicati, coprono gli altri dal più vecchio al più recente, così ogni contenuto risulta *Saldato*, *Parziale* o *Da saldare*.
 
 ## Primo avvio
 
