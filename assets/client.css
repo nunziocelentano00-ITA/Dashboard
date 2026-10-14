@@ -268,7 +268,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 8px clamp(16px, 4vw, 40px) 64
 .state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .state.saldato { color: var(--ok); }
 .state.parziale { color: var(--warn); }
-.state.da_saldare { color: var(--due); }
+.state.da_saldare { color: var(--muted); }
 .r-price { font-weight: 800; font-size: 16px; text-align: right; white-space: nowrap; }
 .r-empty { padding: 26px 0; text-align: center; color: var(--muted); font-weight: 600; }
 

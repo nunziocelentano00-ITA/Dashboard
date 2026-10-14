@@ -17,6 +17,9 @@
     euro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 6.5A7 7 0 1 0 17.5 17.5"/><path d="M4 10h9M4 14h9"/></svg>'
   };
 
+  // Etichette per il cliente: tono neutro, niente "Da saldare" ripetuto ovunque.
+  const ST = { saldato: 'Saldato', parziale: 'Pagato in parte', da_saldare: 'In attesa' };
+
   function fail(title, msg) {
     app.innerHTML = `<div class="boot"><h1>${esc(title)}</h1><p>${esc(msg)}</p></div>`;
   }
@@ -178,7 +181,6 @@
   }
 
   function cardHTML(w) {
-    const st = L.status[w.id];
     let inner;
     if (w.media && w.media[0]) inner = `<img data-media="${esc(w.media[0])}" alt="">`;
     else if (w.type === 'published' && RS.igEmbed(w.url)) inner = `<iframe src="${esc(RS.igEmbed(w.url))}" loading="lazy" scrolling="no" tabindex="-1" title="Post Instagram"></iframe>`;
@@ -186,7 +188,7 @@
     const badge = w.type === 'draft' ? `<span class="badge draft">${I.draft} Bozza</span>` : `<span class="badge">${I.ig} Pubblicato</span>`;
     return `<button class="card" data-open="${esc(w.id)}" aria-label="${esc(w.title || 'Apri contenuto')}">
       ${badge}<div class="frame">${inner}</div>
-      <div class="shade">${esc(w.title || RS.TYPE_LABEL[w.type])}<small>${RS.fmtDate(w.date)} · ${RS.STATE_LABEL[st.state]}</small></div>
+      <div class="shade">${esc(w.title || RS.TYPE_LABEL[w.type])}<small>${RS.fmtDate(w.date)}</small></div>
     </button>`;
   }
 
@@ -228,8 +230,8 @@
         <section class="summary">
           <div class="kpi"><div class="lbl">Totale</div><div class="val" data-count="${L.total}">${RS.money(0)}</div><div class="hint">${L.works.length} contenuti · IVA inclusa</div></div>
           <div class="kpi"><div class="lbl">Pagato</div><div class="val" data-count="${L.paid}">${RS.money(0)}</div><div class="hint">${L.payments.length} ${L.payments.length === 1 ? 'pagamento' : 'pagamenti'}</div></div>
-          <div class="kpi ${settled ? 'done' : 'due'}"><div class="lbl">${settled ? 'Tutto saldato' : 'Da saldare'}</div><div class="val" data-count="${L.due}">${RS.money(0)}</div><div class="hint">${
-            L.credit ? 'Credito a tuo favore: ' + RS.money(L.credit) : settled ? 'Grazie!' : 'Residuo aggiornato al ' + RS.fmtDate(data.updatedAt.slice(0, 10))
+          <div class="kpi ${settled ? 'done' : 'due'}"><div class="lbl">${settled ? 'Tutto saldato' : 'Residuo'}</div><div class="val" data-count="${L.due}">${RS.money(0)}</div><div class="hint">${
+            L.credit ? 'Credito a tuo favore: ' + RS.money(L.credit) : settled ? 'Grazie!' : 'Aggiornato al ' + RS.fmtDate(data.updatedAt.slice(0, 10))
           }</div>${pay ? `<a class="pay-btn" href="${esc(pay)}" target="_blank" rel="noopener">${I.euro} ${RS.payLabel(pay)}</a>` : ''}</div>
           <div class="progress">
             <div class="progress-row"><span>Avanzamento pagamenti</span><span>${pct}%</span></div>
@@ -244,7 +246,6 @@
               ${chip('all', 'Tutti', L.works.length)}
               ${chip('published', 'Pubblicati', L.published)}
               ${chip('draft', 'Bozze', L.drafts)}
-              ${chip('open', 'Da saldare', L.works.filter((w) => L.status[w.id].state !== 'saldato').length)}
             </div>
           </div>
           <article class="receipt">
@@ -274,7 +275,7 @@
               <div class="r-line"><div>Totale pagato</div><div class="neg">− ${RS.money(L.paid)}</div></div>
               ${L.credit ? `<div class="r-line"><div>Credito a tuo favore</div><div><b>${RS.money(L.credit)}</b></div></div>` : ''}
             </div>
-            <div class="r-total"><span>Residuo da saldare</span><strong>${RS.money(L.due)}</strong></div>
+            <div class="r-total"><span>Residuo</span><strong>${RS.money(L.due)}</strong></div>
             ${pay ? `<p class="pay-print">Puoi pagare su: ${esc(pay.replace(/^https:\/\//, '').replace(/\/$/, ''))}</p>` : ''}
             ${settled ? '<div class="stamp">SALDATO</div>' : ''}
             <p class="r-foot">Documento di rendicontazione dei servizi social. Non costituisce documento fiscale.</p>
@@ -314,9 +315,9 @@
               <div class="r-thumb">${thumb}</div>
               <div style="min-width:0">
                 <div class="r-title">${esc(w.title || RS.TYPE_LABEL[w.type])}</div>
-                <div class="r-sub"><span>${RS.fmtDate(w.date)}</span><span class="tag ${w.type === 'draft' ? 'draft' : ''}">${RS.TYPE_LABEL[w.type]}</span><span class="state ${st.state}">${RS.STATE_LABEL[st.state]}${
-                  st.state === 'parziale' ? ' · ' + RS.money(st.covered) : ''
-                }</span></div>
+                <div class="r-sub"><span>${RS.fmtDate(w.date)}</span><span class="tag ${w.type === 'draft' ? 'draft' : ''}">${RS.TYPE_LABEL[w.type]}</span>${
+                  st.state === 'da_saldare' ? '' : `<span class="state ${st.state}">${ST[st.state]}${st.state === 'parziale' ? ' · ' + RS.money(st.covered) : ''}</span>`
+                }</div>
               </div>
               <div class="r-price">${RS.money(w.price)}</div>
             </li>`;
@@ -404,7 +405,7 @@
         <div class="facts">
           <div class="fact"><span>Data</span><b>${RS.fmtDate(w.date)}</b></div>
           <div class="fact"><span>Importo</span><b>${RS.money(w.price)}</b></div>
-          <div class="fact"><span>Stato</span><b class="state ${st.state}">${RS.STATE_LABEL[st.state]}</b></div>
+          <div class="fact"><span>Stato</span><b class="state ${st.state}">${ST[st.state]}</b></div>
           <div class="fact"><span>Coperto</span><b>${RS.money(st.covered)}</b></div>
         </div>
         ${w.caption ? `<div class="caption">${esc(w.caption)}</div>` : ''}
