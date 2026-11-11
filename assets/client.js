@@ -5,6 +5,18 @@
   const esc = RS.esc;
   const app = document.getElementById('app');
 
+  // La chiave del link (#k=…) passa in sessionStorage e sparisce dalla barra degli indirizzi,
+  // così gli script di statistiche (Clarity), che leggono location.href, non la vedono mai.
+  // Se il cliente sceglie "ricorda su questo dispositivo", la chiave resta anche in localStorage.
+  const SLUG = (new URLSearchParams(location.search).get('c') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  let LINK_KEY = new URLSearchParams(location.hash.slice(1)).get('k');
+  if (LINK_KEY) {
+    try { sessionStorage.setItem('rs.k.' + SLUG, LINK_KEY); } catch (e) {}
+    history.replaceState(null, '', location.pathname + location.search);
+  } else {
+    try { LINK_KEY = sessionStorage.getItem('rs.k.' + SLUG) || localStorage.getItem('rs.k.' + SLUG); } catch (e) {}
+  }
+
   const I = {
     ig: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/></svg>',
     pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>',
@@ -50,8 +62,8 @@
   }
 
   async function boot() {
-    const slug = (new URLSearchParams(location.search).get('c') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const k = new URLSearchParams(location.hash.slice(1)).get('k');
+    const slug = SLUG;
+    const k = LINK_KEY;
     if (!slug || !k) return fail('Link incompleto', 'Apri il link completo che hai ricevuto: contiene la chiave per leggere il tuo rendiconto.');
     let txt;
     try {
@@ -116,7 +128,10 @@
     set(slug, pin, persist) {
       try {
         sessionStorage.setItem('rs.pin.' + slug, pin);
-        if (persist) localStorage.setItem('rs.pin.' + slug, pin);
+        if (persist) {
+          localStorage.setItem('rs.pin.' + slug, pin);
+          if (LINK_KEY) localStorage.setItem('rs.k.' + slug, LINK_KEY);
+        }
       } catch (e) {}
     },
     del(slug) {
